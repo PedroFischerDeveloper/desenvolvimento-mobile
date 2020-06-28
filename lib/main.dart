@@ -25,6 +25,8 @@ class _HomeState extends State<Home> {
   Map<String, dynamic> _lastRemoved;
   int _lastRemovedPos;
 
+  final _formKey = GlobalKey<FormState>();
+
   @override
   void initState() {
     super.initState();
@@ -37,15 +39,19 @@ class _HomeState extends State<Home> {
   }
 
   void _addToDo() {
-    setState(() {
-      Map<String, dynamic> newToDo = Map();
-      newToDo["title"] = _toDoController.text;
-      _toDoController.text = "";
-      newToDo["ok"] = false;
-      _toDoList.add(newToDo);
+    if (_formKey.currentState.validate()) {
+      setState(() {
+        Map<String, dynamic> newToDo = Map();
+        newToDo["title"] = _toDoController.text.trim();
+        newToDo["checked"] = false;
 
-      _saveData();
-    });
+        _toDoList.add(newToDo);
+
+        _toDoController.clear();
+
+        _saveData();
+      });
+    }
   }
 
   Future<Null> _refresh() async {
@@ -53,9 +59,9 @@ class _HomeState extends State<Home> {
 
     setState(() {
       _toDoList.sort((a, b) {
-        if (a["ok"] && !b["ok"])
+        if (a["checked"] && !b["checked"])
           return 1;
-        else if (!a["ok"] && b["ok"])
+        else if (!a["checked"] && b["checked"])
           return -1;
         else
           return 0;
@@ -75,39 +81,51 @@ class _HomeState extends State<Home> {
         backgroundColor: Colors.green,
         centerTitle: true,
       ),
-      body: Column(
-        children: <Widget>[
-          Container(
-            padding: EdgeInsets.fromLTRB(17.0, 1.0, 7.0, 1.0),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                    child: TextField(
-                  controller: _toDoController,
-                  decoration: InputDecoration(
-                      labelText: "Nova Tarefa",
-                      labelStyle: TextStyle(color: Colors.green)),
-                )),
-                RaisedButton(
-                  color: Colors.green,
-                  child: Text("ADD"),
-                  textColor: Colors.white,
-                  onPressed: _addToDo,
-                )
-              ],
-            ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
+      body: Form(
+          key: _formKey,
+          child: Column(children: <Widget>[
+            Container(
+                padding: EdgeInsets.fromLTRB(17.0, 1.0, 7.0, 1.0),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      Expanded(
+                          child: TextFormField(
+                        controller: _toDoController,
+                        validator: (value) {
+                          if (value.isEmpty) {
+                            return 'Preencha o campo com uma nova tarefa';
+                          }
+
+                          if (value.trim() == '') {
+                            return 'Preencha o campo com uma nova tarefa';
+                          }
+
+                          return null;
+                        },
+                        decoration: InputDecoration(
+                            labelText: "Tarefa",
+                            labelStyle: TextStyle(color: Colors.green)),
+                      )),
+                      FlatButton(
+                        color: Colors.green,
+                        child: Icon(Icons.add),
+                        textColor: Colors.white,
+                        onPressed: _addToDo,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30.0),
+                        ),
+                      ),
+                    ])),
+            Expanded(
+                child: RefreshIndicator(
               onRefresh: _refresh,
               child: ListView.builder(
                   padding: EdgeInsets.only(top: 10.0),
                   itemCount: _toDoList.length,
                   itemBuilder: buildItem),
-            ),
-          )
-        ],
-      ),
+            ))
+          ])),
     );
   }
 
@@ -127,13 +145,13 @@ class _HomeState extends State<Home> {
       direction: DismissDirection.startToEnd,
       child: CheckboxListTile(
         title: Text(_toDoList[index]["title"]),
-        value: _toDoList[index]["ok"],
+        value: _toDoList[index]["checked"],
         secondary: CircleAvatar(
-          child: Icon(_toDoList[index]["ok"] ? Icons.check : Icons.error),
+          child: Icon(_toDoList[index]["checked"] ? Icons.check : Icons.error),
         ),
         onChanged: (c) {
           setState(() {
-            _toDoList[index]["ok"] = c;
+            _toDoList[index]["checked"] = c;
             _saveData();
           });
         },
