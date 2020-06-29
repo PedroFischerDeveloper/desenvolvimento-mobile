@@ -32,7 +32,12 @@ class _LoginPageState extends State<LoginPage> {
 
   void navigateToRegister() {
     Navigator.push(
-        context, MaterialPageRoute(builder: (context) => RegisterPage()));
+        context,
+        MaterialPageRoute(
+            builder: (context) => RegisterPage(
+                  auth: widget.auth,
+                  loginCallback: widget.loginCallback,
+                )));
   }
 
   bool validateAndSave() {
@@ -41,6 +46,9 @@ class _LoginPageState extends State<LoginPage> {
       form.save();
       return true;
     }
+    setState(() {
+      _isLoading = false;
+    });
     return false;
   }
 
