@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:todo/authentication.dart';
-import 'package:todo/home.dart';
-import 'package:todo/login.dart';
+import 'package:todo/services/authentication.dart';
+import 'package:todo/pages/home.dart';
+import 'package:todo/pages/login.dart';
 
 void main() {
   runApp(MaterialApp(
