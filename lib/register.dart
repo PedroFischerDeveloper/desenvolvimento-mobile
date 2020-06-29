@@ -49,7 +49,7 @@ class _RegisterPageState extends State<RegisterPage> {
                         cursorColor: Colors.green,
                         keyboardType: TextInputType.emailAddress,
                         decoration: InputDecoration(
-                            labelText: "E-mail",
+                            labelText: "Email",
                             labelStyle: TextStyle(color: Colors.green),
                             hintStyle:
                                 TextStyle(fontSize: 12, color: Colors.green)),
@@ -80,8 +80,9 @@ class _RegisterPageState extends State<RegisterPage> {
                           children: <Widget>[
                             Expanded(
                                 child: RaisedButton(
+                              elevation: 4,
                               onPressed: () {},
-                              child: Text('Enviar',
+                              child: Text('Cadastrar',
                                   style: TextStyle(
                                       color: Colors.white, fontSize: 18)),
                               color: Colors.green,

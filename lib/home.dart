@@ -3,8 +3,16 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:todo/authentication.dart';
 
 class HomePage extends StatefulWidget {
+  HomePage({Key key, this.auth, this.userId, this.logoutCallback})
+      : super(key: key);
+
+  final BaseAuth auth;
+  final VoidCallback logoutCallback;
+  final String userId;
+
   @override
   _HomeState createState() => _HomeState();
 }
@@ -46,6 +54,15 @@ class _HomeState extends State<HomePage> {
     }
   }
 
+  signOut() async {
+    try {
+      await widget.auth.signOut();
+      widget.logoutCallback();
+    } catch (e) {
+      print(e);
+    }
+  }
+
   Future<Null> _refresh() async {
     await Future.delayed(Duration(seconds: 1));
 
@@ -72,6 +89,12 @@ class _HomeState extends State<HomePage> {
         title: Text("Todo"),
         backgroundColor: Colors.green,
         centerTitle: true,
+        actions: <Widget>[
+            FlatButton(
+              child: new Text('Logout',
+                  style: new TextStyle(fontSize: 17.0, color: Colors.white)),
+              onPressed: signOut)
+        ],
       ),
       body: Form(
           key: _formKey,
