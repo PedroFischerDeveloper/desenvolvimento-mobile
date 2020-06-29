@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:todo/services/authentication.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:todo/models/todo.dart';
+import 'dart:async';
 
 class HomePage extends StatefulWidget {
   HomePage({Key key, this.auth, this.userId, this.logoutCallback})
@@ -14,44 +13,83 @@ class HomePage extends StatefulWidget {
   final String userId;
 
   @override
-  _HomeState createState() => _HomeState();
+  State<StatefulWidget> createState() => new _HomePageState();
 }
 
-class _HomeState extends State<HomePage> {
+class _HomePageState extends State<HomePage> {
+  List<Todo> _todoList;
+
+  final FirebaseDatabase _database = FirebaseDatabase.instance;
+  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+
   final _toDoController = TextEditingController();
+  StreamSubscription<Event> _onTodoAddedSubscription;
+  StreamSubscription<Event> _onTodoChangedSubscription;
 
-  List _toDoList = [];
+  Query _todoQuery;
 
-  Map<String, dynamic> _lastRemoved;
-  int _lastRemovedPos;
-
-  final _formKey = GlobalKey<FormState>();
+  @override
+  Widget build(BuildContext context) {
+    return new Scaffold(
+        appBar: new AppBar(
+          title: new Text('Todo'),
+          centerTitle: true,
+          backgroundColor: Colors.green,
+          actions: <Widget>[
+            new FlatButton(
+                child: new Text('Logout',
+                    style: new TextStyle(fontSize: 17.0, color: Colors.white)),
+                onPressed: signOut)
+          ],
+        ),
+        body: showTodoList(),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            showAddTodoDialog(context);
+          },
+          backgroundColor: Colors.green,
+          tooltip: 'Increment',
+          child: Icon(Icons.add),
+        ));
+  }
 
   @override
   void initState() {
     super.initState();
 
-    _readData().then((data) {
-      setState(() {
-        _toDoList = json.decode(data);
-      });
+    _todoList = new List();
+    _todoQuery = _database
+        .reference()
+        .child("todo")
+        .orderByChild("userId")
+        .equalTo(widget.userId);
+    _onTodoAddedSubscription = _todoQuery.onChildAdded.listen(onEntryAdded);
+    _onTodoChangedSubscription =
+        _todoQuery.onChildChanged.listen(onEntryChanged);
+  }
+
+  @override
+  void dispose() {
+    _onTodoAddedSubscription.cancel();
+    _onTodoChangedSubscription.cancel();
+    super.dispose();
+  }
+
+  onEntryChanged(Event event) {
+    var oldEntry = _todoList.singleWhere((entry) {
+      return entry.key == event.snapshot.key;
+    });
+
+    setState(() {
+      _todoList[_todoList.indexOf(oldEntry)] =
+          Todo.fromSnapshot(event.snapshot);
     });
   }
 
-  void _addToDo() {
-    if (_formKey.currentState.validate()) {
-      setState(() {
-        Map<String, dynamic> newToDo = Map();
-        newToDo["title"] = _toDoController.text.trim();
-        newToDo["checked"] = false;
-
-        _toDoList.add(newToDo);
-
-        _toDoController.clear();
-
-        _saveData();
-      });
-    }
+  onEntryAdded(Event event) {
+    setState(() {
+      _todoList.add(Todo.fromSnapshot(event.snapshot));
+    });
   }
 
   signOut() async {
@@ -63,162 +101,118 @@ class _HomeState extends State<HomePage> {
     }
   }
 
-  Future<Null> _refresh() async {
-    await Future.delayed(Duration(seconds: 1));
+  addNewTodo(String todoItem) {
+    if (todoItem.length > 0) {
+      Todo todo = new Todo(todoItem.toString(), widget.userId, false);
+      _database.reference().child("todo").push().set(todo.toJson());
+    }
+  }
 
-    setState(() {
-      _toDoList.sort((a, b) {
-        if (a["checked"] && !b["checked"])
-          return 1;
-        else if (!a["checked"] && b["checked"])
-          return -1;
-        else
-          return 0;
+  updateTodo(Todo todo) {
+    todo.completed = !todo.completed;
+    if (todo != null) {
+      _database.reference().child("todo").child(todo.key).set(todo.toJson());
+    }
+  }
+
+  deleteTodo(String todoId, int index) {
+    _database.reference().child("todo").child(todoId).remove().then((_) {
+      print("Delete $todoId successful");
+      setState(() {
+        _todoList.removeAt(index);
       });
-
-      _saveData();
     });
-
-    return null;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Todo"),
-        backgroundColor: Colors.green,
-        centerTitle: true,
-        actions: <Widget>[
-          FlatButton(
-              child: new Text('Logout',
-                  style: new TextStyle(fontSize: 17.0, color: Colors.white)),
-              onPressed: signOut)
-        ],
-      ),
-      body: Form(
-          key: _formKey,
-          child: Column(children: <Widget>[
-            Container(
-                padding: EdgeInsets.fromLTRB(17.0, 1.0, 7.0, 1.0),
-                child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: <Widget>[
-                      Expanded(
-                          child: TextFormField(
-                        controller: _toDoController,
-                        validator: (value) {
-                          if (value.isEmpty) {
-                            return 'Preencha o campo com uma nova tarefa';
-                          }
-
-                          if (value.trim() == '') {
-                            return 'Preencha o campo com uma nova tarefa';
-                          }
-
-                          return null;
-                        },
-                        decoration: InputDecoration(
-                            labelText: "Tarefa",
-                            labelStyle: TextStyle(color: Colors.green)),
-                      )),
-                      FlatButton(
-                        color: Colors.green,
-                        child: Icon(Icons.add),
-                        textColor: Colors.white,
-                        onPressed: _addToDo,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30.0),
-                        ),
-                      ),
-                    ])),
-            Expanded(
-                child: RefreshIndicator(
-              onRefresh: _refresh,
-              child: ListView.builder(
-                  padding: EdgeInsets.only(top: 10.0),
-                  itemCount: _toDoList.length,
-                  itemBuilder: buildItem),
-            ))
-          ])),
-    );
-  }
-
-  Widget buildItem(BuildContext context, int index) {
-    return Dismissible(
-      key: Key(DateTime.now().millisecondsSinceEpoch.toString()),
-      background: Container(
-        color: Colors.red,
-        child: Align(
-          alignment: Alignment(-0.9, 0.0),
-          child: Icon(
-            Icons.delete,
-            color: Colors.white,
-          ),
-        ),
-      ),
-      direction: DismissDirection.startToEnd,
-      child: CheckboxListTile(
-        title: Text(_toDoList[index]["title"]),
-        value: _toDoList[index]["checked"],
-        secondary: CircleAvatar(
-          child: Icon(_toDoList[index]["checked"] ? Icons.check : Icons.error),
-        ),
-        onChanged: (c) {
-          setState(() {
-            _toDoList[index]["checked"] = c;
-            _saveData();
-          });
-        },
-      ),
-      onDismissed: (direction) {
-        setState(() {
-          _lastRemoved = Map.from(_toDoList[index]);
-          _lastRemovedPos = index;
-          _toDoList.removeAt(index);
-
-          _saveData();
-
-          final snack = SnackBar(
-            content: Text("Tarefa \"${_lastRemoved["title"]}\" removida!"),
-            action: SnackBarAction(
-                label: "Desfazer",
-                onPressed: () {
-                  setState(() {
-                    _toDoList.insert(_lastRemovedPos, _lastRemoved);
-                    _saveData();
-                  });
-                }),
-            duration: Duration(seconds: 2),
+  showAddTodoDialog(BuildContext context) async {
+    _toDoController.clear();
+    await showDialog<String>(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            content: new Row(
+              children: <Widget>[
+                new Expanded(
+                    child: new TextField(
+                  controller: _toDoController,
+                  autofocus: true,
+                  decoration: new InputDecoration(
+                      labelText: 'Add new todo',
+                      labelStyle: TextStyle(color: Colors.green)),
+                ))
+              ],
+            ),
+            actions: <Widget>[
+              new FlatButton(
+                  child: const Text('Cancel'),
+                  color: Colors.green,
+                  onPressed: () {
+                    Navigator.pop(context);
+                  }),
+              new FlatButton(
+                  child: const Text('Save'),
+                  color: Colors.green,
+                  onPressed: () {
+                    addNewTodo(_toDoController.text.toString());
+                    Navigator.pop(context);
+                  })
+            ],
           );
-
-          Scaffold.of(context).removeCurrentSnackBar();
-          Scaffold.of(context).showSnackBar(snack);
         });
-      },
-    );
   }
 
-  Future<File> _getFile() async {
-    final directory = await getApplicationDocumentsDirectory();
-    return File("${directory.path}/data.json");
-  }
+  Widget showTodoList() {
+    if (_todoList.length > 0) {
+      return ListView.builder(
+          shrinkWrap: true,
+          itemCount: _todoList.length,
+          itemBuilder: (BuildContext context, int index) {
+            String todoId = _todoList[index].key;
+            String subject = _todoList[index].subject;
+            bool completed = _todoList[index].completed;
 
-  Future<File> _saveData() async {
-    String data = json.encode(_toDoList);
+            return Dismissible(
+                key: Key(todoId),
+                background: Container(
+                  color: Colors.red,
+                  child: Align(
+                    alignment: Alignment(-0.9, 0.0),
+                    child: Icon(
+                      Icons.delete,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                direction: DismissDirection.startToEnd,
+                child: CheckboxListTile(
+                  title: Text(subject),
+                  value: completed,
+                  secondary: CircleAvatar(
+                    child: Icon(completed ? Icons.check : Icons.error),
+                  ),
+                  onChanged: (c) {
+                    updateTodo(_todoList[index]);
+                  },
+                ),
+                onDismissed: (direction) async {
+                  final snack = SnackBar(
+                    content: Text("Tarefa \"$subject\" removida!"),
+                    duration: Duration(seconds: 2),
+                  );
 
-    final file = await _getFile();
-    return file.writeAsString(data);
-  }
+                  Scaffold.of(context).removeCurrentSnackBar();
+                  Scaffold.of(context).showSnackBar(snack);
 
-  Future<String> _readData() async {
-    try {
-      final file = await _getFile();
-
-      return file.readAsString();
-    } catch (e) {
-      return null;
+                  deleteTodo(todoId, index);
+                });
+          });
+    } else {
+      return Center(
+          child: Text(
+        "Welcome. Your list is empty",
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 30.0),
+      ));
     }
   }
 }
